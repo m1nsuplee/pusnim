@@ -1,4 +1,4 @@
-import { DomNode } from '../dom-node/dom-node.model';
+import { DomNode } from '../dom-node';
 
 export enum FiberType {
   TextElement = 'TEXT_ELEMENT',
