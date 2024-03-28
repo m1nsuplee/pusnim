@@ -1,5 +1,10 @@
-import { DomNode, Fiber, PusnimElement } from './models';
-import { pusnimAppState } from './models/state';
+import {
+  DomNode,
+  Fiber,
+  PusnimElement,
+  RequestIdleCallbackDeadline,
+} from './models';
+import { pusnimAppState } from './state';
 import { isEvent, isGone, isNew, isProperty } from './utils';
 
 function styleObjectToString(style: any) {
@@ -97,6 +102,162 @@ function updateDom(dom: DomNode, prevProps: any, nextProps: any) {
     });
 }
 
+function commitRoot() {
+  pusnimAppState.deletions.forEach(commitWork);
+
+  if (pusnimAppState.wipRoot?.child) {
+    commitWork(pusnimAppState.wipRoot.child);
+    pusnimAppState.currentRoot = pusnimAppState.wipRoot;
+  }
+
+  pusnimAppState.wipRoot = undefined;
+}
+
+function commitWork(fiber?: Fiber) {
+  if (!fiber) {
+    return;
+  }
+
+  let domParentFiber = fiber.parent;
+  while (!domParentFiber?.dom) {
+    domParentFiber = domParentFiber?.parent;
+  }
+  const domParent = domParentFiber.dom;
+
+  if (fiber.effectTag === 'PLACEMENT' && fiber.dom != null) {
+    domParent.appendChild(fiber.dom);
+  } else if (
+    fiber.effectTag === 'UPDATE' &&
+    fiber.dom != null &&
+    fiber.alternate
+  ) {
+    updateDom(fiber.dom, fiber.alternate.props, fiber.props);
+  } else if (fiber.effectTag === 'DELETION') {
+    commitDeletion(fiber, domParent);
+  }
+
+  commitWork(fiber.child as Fiber);
+  commitWork(fiber.sibling as Fiber);
+}
+
+function commitDeletion(fiber: Fiber, domParent: DomNode) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom);
+  } else if (fiber?.child) {
+    commitDeletion(fiber.child, domParent);
+  }
+}
+
+function workLoop(deadline: RequestIdleCallbackDeadline) {
+  let shouldYield = false;
+  while (pusnimAppState.nextUnitOfWork && !shouldYield) {
+    pusnimAppState.nextUnitOfWork = performUnitOfWork(
+      pusnimAppState.nextUnitOfWork
+    );
+    shouldYield = deadline.timeRemaining() < 1;
+  }
+
+  if (!pusnimAppState.nextUnitOfWork && pusnimAppState.wipRoot) {
+    commitRoot();
+  }
+
+  requestIdleCallback(workLoop);
+}
+
+requestIdleCallback(workLoop);
+
+function performUnitOfWork(fiber: Fiber) {
+  const isFunctionComponent = fiber.type instanceof Function;
+
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber);
+  } else {
+    updateHostComponent(fiber);
+  }
+
+  if (fiber.child) {
+    return fiber.child;
+  }
+
+  let nextFiber = fiber;
+
+  while (nextFiber) {
+    if (nextFiber.sibling) {
+      return nextFiber.sibling;
+    }
+    nextFiber = nextFiber.parent as Fiber;
+  }
+}
+
+function updateFunctionComponent(fiber: Fiber) {
+  pusnimAppState.wipFiber = fiber;
+  pusnimAppState.hookIndex = 0;
+  pusnimAppState.wipFiber.hooks = [];
+  const children = [(fiber.type as Function)(fiber.props)];
+  reconcileChildren(fiber, children);
+}
+
+function updateHostComponent(fiber: Fiber) {
+  if (!fiber.dom) {
+    fiber.dom = createDom(fiber);
+  }
+
+  reconcileChildren(fiber, fiber.props.children);
+}
+
+function reconcileChildren(wipFiber: Fiber, elements: any) {
+  let index = 0;
+  let oldFiber = wipFiber.alternate?.child;
+  let prevSibling: Fiber | undefined = undefined;
+
+  while (index < elements.length || oldFiber !== undefined) {
+    const element = elements[index];
+    let newFiber: Fiber | undefined = undefined;
+
+    const sameType = oldFiber && element && element.type === oldFiber.type;
+
+    if (sameType) {
+      newFiber = {
+        type: oldFiber?.type,
+        props: element.props,
+        dom: oldFiber?.dom,
+        parent: wipFiber,
+        alternate: oldFiber,
+        effectTag: 'UPDATE',
+      };
+    }
+
+    if (element && !sameType) {
+      newFiber = {
+        type: element.type,
+        props: element.props,
+        dom: undefined,
+        parent: wipFiber,
+        alternate: undefined,
+        effectTag: 'PLACEMENT',
+      };
+    }
+
+    if (oldFiber && !sameType) {
+      oldFiber.effectTag = 'DELETION';
+      pusnimAppState.deletions.push(oldFiber);
+    }
+
+    if (oldFiber) {
+      oldFiber = oldFiber.sibling;
+    }
+
+    if (index === 0) {
+      wipFiber.child = newFiber;
+    } else if (elements && prevSibling) {
+      prevSibling.sibling = newFiber;
+    }
+
+    prevSibling = newFiber;
+    index++;
+  }
+}
+
 function createDom(fiber: Fiber) {
   const dom =
     fiber.type === 'TEXT_ELEMENT'
@@ -127,3 +288,5 @@ function createRoot(container: DomNode) {
     render: render(container),
   };
 }
+
+export { createElement, createRoot };

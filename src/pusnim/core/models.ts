@@ -1,3 +1,8 @@
+export interface RequestIdleCallbackDeadline {
+  readonly didTimeout: boolean;
+  timeRemaining: () => number;
+}
+
 export interface PusnimElement {
   type: string;
   props: any;
@@ -5,7 +10,7 @@ export interface PusnimElement {
 
 export type DomNode = HTMLElement | Text;
 
-export type Fiber = {
+export interface Fiber {
   type?: string | Function;
   props: {
     children: Fiber[];
@@ -18,13 +23,13 @@ export type Fiber = {
   alternate?: Fiber;
   effectTag?: string;
   hooks?: any[];
-};
+}
 
-export type PusnimAppState = {
+export interface PusnimAppState {
   currentRoot: Fiber;
   deletions: Fiber[];
   wipFiber: Fiber;
   nextUnitOfWork?: Fiber;
   wipRoot?: Fiber;
   hookIndex: number;
-};
+}
