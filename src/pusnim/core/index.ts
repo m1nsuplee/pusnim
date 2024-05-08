@@ -328,6 +328,12 @@ function createDom(fiber: Fiber) {
   return dom;
 }
 
+/**
+ * React 내부에서 Render 단계는 더 좁은 의미로,
+ * JSX 또는 React.createElement()로 작성된 코드를 React 엘리먼트로 변경하는 작업만을 의미한다.
+ * React 엘리먼트는 클래스가 아닌 일반 객체로,
+ * 사용자가 작성한 컴포넌트 또는 엘리먼트 타입과 어트리뷰트, 자식에 관한 정보를 담고 있는 객체이다.
+ */
 function render(container: DomNode): (element: any) => void {
   return (element: any) => {
     pusnimAppState.wipRoot = {
